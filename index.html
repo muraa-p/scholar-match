@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ScholarMatch - Global Scholarship Discovery & Opportunity Portal</title>
+    <meta name="description" content="Find scholarships across the internet matching your academic profile, with verified requirements, financial breakdowns, direct application links, official contacts, and milestone checklists." />
+    <meta property="og:title" content="ScholarMatch - Global Scholarship Discovery & Opportunity Portal" />
+    <meta property="og:description" content="Find scholarships across the internet matching your academic profile, with verified requirements, financial breakdowns, direct application links, official contacts, and milestone checklists." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Space+Grotesk:wght@500;600;700&family=Cinzel:wght@600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-stone-100 text-stone-900 dark:bg-[#0A0A0B] dark:text-[#E4E4E7] transition-colors duration-200 antialiased min-h-screen selection:bg-[#C5A267]/30 selection:text-[#F5F5F7]">
+    <div id="root"></div>
+    <script>
+      (function() {
+        try {
+          var KEY = 'scholarmatch_theme_mode_v2';
+          var saved = null;
+          try { saved = localStorage.getItem(KEY); } catch(e) {}
+          var prefersDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : false;
+          var dark = saved ? saved === 'dark' : prefersDark;
+          var root = document.documentElement;
+          if (dark) root.classList.add('dark'); else root.classList.remove('dark');
+          root.style.colorScheme = dark ? 'dark' : 'light';
+        } catch(e) {}
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

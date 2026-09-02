@@ -1,0 +1,6 @@
+{
+  "name": "ScholarMatch - Global Scholarship Discovery & Opportunity Portal",
+  "description": "Find scholarships across the internet matching your academic profile, with verified requirements, financial breakdowns, direct application links, official contacts, and milestone checklists.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
