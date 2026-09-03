@@ -51,36 +51,45 @@ export async function callGeminiText(prompt: string, timeoutMs = 20000): Promise
 }
 
 // Robust JSON extraction from Gemini responses (with timeout + graceful null)
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function fetchJson<T>(
   ai: GoogleGenAI,
   prompt: string,
   schema: any,
   timeoutMs = 25000,
-  options?: { tools?: any[] }
+  retries = 3
 ): Promise<T | null> {
-  try {
-    const response = await withTimeout(
-      ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-          ...(options?.tools?.length ? { tools: options.tools } : {}),
-        },
-      }),
-      timeoutMs
-    );
-    if (!response.text) return null;
-    const text = response.text.trim();
-    // Handle potential markdown code fences
-    const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
-    return JSON.parse(cleaned) as T;
-  } catch (e) {
-    console.error('Gemini fetchJson error:', (e as Error).message);
-    return null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: schema,
+          },
+        }),
+        timeoutMs
+      );
+      if (!response.text) return null;
+      const text = response.text.trim();
+      // Handle potential markdown code fences
+      const cleaned = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+      return JSON.parse(cleaned) as T;
+    } catch (e) {
+      const msg = (e as Error).message || '';
+      // Retry only on transient quota/availability errors, with backoff.
+      if (attempt < retries && /429|503|quota|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand/.test(msg)) {
+        const wait = 2000 * Math.pow(2, attempt);
+        console.warn(`Gemini fetchJson retry ${attempt + 1}/${retries} after ${wait}ms: ${msg.slice(0, 120)}`);
+        await sleep(wait);
+        continue;
+      }
+      console.error('Gemini fetchJson error:', msg);
+      return null;
+    }
   }
+  return null;
 }
-
-// Google Search grounding tool definition (lets Gemini search the live web).
-export const GOOGLE_SEARCH_TOOL = { googleSearch: {} };

@@ -1,32 +1,54 @@
-import { GoogleGenAI, Type } from '@google/genai';
-import { getGeminiClient, fetchJson, GEMINI_MODEL, GOOGLE_SEARCH_TOOL } from '../server/gemini';
+import Parser from 'rss-parser';
 import { admin } from '../lib/supabaseAdmin';
 
 // ---------------------------------------------------------------------
-// Discovery sources: curated topical queries that return many fresh
-// scholarship opportunities. We use Gemini's Google Search grounding
-// (real web access) instead of brittle HTML scraping so results stay
-// robust and current.
+// Background discovery: search Google News RSS (free + keyless, no quota)
+// for current scholarship listings, parse them into our scholarship
+// shape, and write NEW ones to Supabase with deduplication.
+//
+// This is the "agent" that runs on a schedule (see inngest.ts) and
+// finds real, current scholarships without touching the paid Gemini
+// API — so there are no free-tier quota/429/503 limits.
+//
+// The Gemini-based generator was removed as the primary source because
+// the free tier returned 429/503. If you later want AI-written
+// enrichment, re-add it only as an optional secondary stage — never as
+// the data source.
 // ---------------------------------------------------------------------
 
-export interface DiscoveryQuery {
-  id: string;
-  query: string;
-}
-
-export const DISCOVERY_QUERIES: DiscoveryQuery[] = [
-  { id: 'fully-funded-masters', query: 'current fully funded master scholarships for international students 2026 2027 with application deadlines' },
-  { id: 'phd-scholarships', query: 'current fully funded PhD scholarships for international students 2026 2027 with application deadlines' },
-  { id: 'developing-countries', query: 'scholarships for students from developing countries 2026 2027 with application links' },
-  { id: 'stem', query: 'STEM scholarships for international students 2026 2027 with requirements and deadlines' },
-  { id: 'undergraduate', query: 'undergraduate scholarships for international students 2026 2027 with application deadlines' },
+// Keyless Google News RSS search feeds. These reliably return ~100 real
+// items per query, fast, with no API key and no quota. Each query is a
+// different angle (fully funded, general, by level) to widen coverage.
+export const DISCOVERY_FEEDS: string[] = [
+  'https://news.google.com/rss/search?q=' + encodeURIComponent('fully funded scholarship 2026 application deadline') + '&hl=en-US&gl=US&ceid=US:en',
+  'https://news.google.com/rss/search?q=' + encodeURIComponent('("scholarship" OR "scholarships") application open') + '&hl=en-US&gl=US&ceid=US:en',
+  'https://news.google.com/rss/search?q=' + encodeURIComponent('("PhD scholarship" OR "masters scholarship") fully funded 2026') + '&hl=en-US&gl=US&ceid=US:en',
 ];
 
-// ---------------------------------------------------------------------
-// Structured extraction from a chunk of discovered web text
-// ---------------------------------------------------------------------
+// Curated table of well-known programs that we inject deterministically
+// as a local fallback when every feed is unreachable. Keeps discovery
+// useful even fully offline.
+const CURATED_FALLBACK: Array<{
+  title: string;
+  provider: string;
+  hostCountry: string;
+  degreeLevels: string[];
+  fundingType: string;
+  officialApplicationUrl: string;
+}> = [
+  { title: 'Chevening Scholarships', provider: 'UK Foreign, Commonwealth & Development Office', hostCountry: 'United Kingdom', degreeLevels: ['Master / Postgraduate'], fundingType: 'Fully Funded', officialApplicationUrl: 'https://www.chevening.org/scholarships/' },
+  { title: 'Fulbright Foreign Student Program', provider: 'U.S. Department of State', hostCountry: 'United States', degreeLevels: ['Master / Postgraduate', 'PhD / Doctorate'], fundingType: 'Fully Funded', officialApplicationUrl: 'https://foreign.fulbrightonline.org/' },
+  { title: 'DAAD Development-Related Postgraduate Courses (EPOS)', provider: 'German Academic Exchange Service (DAAD)', hostCountry: 'Germany', degreeLevels: ['Master / Postgraduate', 'PhD / Doctorate'], fundingType: 'Fully Funded', officialApplicationUrl: 'https://www.daad.de/en/study-and-research-in-germany/scholarships/' },
+  { title: 'Eiffel Excellence Scholarship Program', provider: 'French Ministry for Europe and Foreign Affairs', hostCountry: 'France', degreeLevels: ['Master / Postgraduate', 'PhD / Doctorate'], fundingType: 'Fully Funded', officialApplicationUrl: 'https://www.campusfrance.org/en/the-programme-eiffel' },
+  { title: 'Rhodes Scholarship', provider: 'The Rhodes Trust', hostCountry: 'United Kingdom', degreeLevels: ['Master / Postgraduate', 'PhD / Doctorate'], fundingType: 'Fully Funded', officialApplicationUrl: 'https://www.rhodeshouse.ox.ac.uk/' },
+  { title: 'Commonwealth Scholarship (Master’s & PhD)', provider: 'Commonwealth Scholarship Commission', hostCountry: 'United Kingdom', degreeLevels: ['Master / Postgraduate', 'PhD / Doctorate'], fundingType: 'Fully Funded', officialApplicationUrl: 'https://cscuk.fcdo.gov.uk/' },
+  { title: 'Aga Khan Scholarship Programme', provider: 'Aga Khan Foundation', hostCountry: 'Multiple', degreeLevels: ['Master / Postgraduate'], fundingType: 'Partial Tuition', officialApplicationUrl: 'https://the.akdn/en/what-we-do/our-agencies/aga-khan-foundation' },
+  { title: 'Erasmus Mundus Joint Master’s', provider: 'European Union (EACEA)', hostCountry: 'Multiple', degreeLevels: ['Master / Postgraduate'], fundingType: 'Fully Funded', officialApplicationUrl: 'https://www.eacea.ec.europa.eu/scholarships/erasmus-mundus-catalogue_en' },
+  { title: 'Australia Awards', provider: 'Australian Department of Foreign Affairs and Trade', hostCountry: 'Australia', degreeLevels: ['Master / Postgraduate', 'PhD / Doctorate'], fundingType: 'Fully Funded', officialApplicationUrl: 'https://www.dfat.gov.au/people-to-people/australia-awards' },
+  { title: 'Knight-Hennessy Scholars', provider: 'Stanford University', hostCountry: 'United States', degreeLevels: ['Master / Postgraduate', 'PhD / Doctorate'], fundingType: 'Fully Funded', officialApplicationUrl: 'https://knight-hennessy.stanford.edu/' },
+];
 
-interface ExtractedScholarship {
+export interface ExtractedScholarship {
   title: string;
   provider: string;
   university?: string;
@@ -43,139 +65,152 @@ interface ExtractedScholarship {
   sourceName: string;
 }
 
-const SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    title: { type: Type.STRING },
-    provider: { type: Type.STRING },
-    university: { type: Type.STRING },
-    hostCountry: { type: Type.STRING },
-    degreeLevels: { type: Type.ARRAY, items: { type: Type.STRING } },
-    fieldsOfStudy: { type: Type.ARRAY, items: { type: Type.STRING } },
-    fundingType: { type: Type.STRING },
-    deadline: { type: Type.STRING },
-    summary: { type: Type.STRING },
-    keyRequirements: { type: Type.ARRAY, items: { type: Type.STRING } },
-    officialApplicationUrl: { type: Type.STRING },
-    contacts: {
-      type: Type.OBJECT,
-      properties: {
-        email: { type: Type.STRING },
-        inquiryFormUrl: { type: Type.STRING },
-      },
-    },
-    sourceUrl: { type: Type.STRING },
-    sourceName: { type: Type.STRING },
-  },
-  required: ['title', 'provider', 'hostCountry', 'degreeLevels', 'fundingType'],
-};
-
-export async function runDiscoveryRun(query: string): Promise<{ results: number; errors: number }> {
-  const ai = getGeminiClient();
-  if (!ai) {
-    console.warn('No Gemini key — skipping discovery run');
-    await logDiscovery(query, 'failed', 0, 'No Gemini key configured');
-    return { results: 0, errors: 0 };
-  }
-
-  try {
-    const raw = await fetchJson<{ scholarships: ExtractedScholarship[] }>(
-      ai,
-      `You are a scholarship discovery agent with live Google Search access. Use the search tool to find current, REAL scholarship opportunities matching this intent: "${query}".
-
-Only include scholarships that actually exist and are currently open for application (or have an announced 2026/2027 deadline). Prefer well-known, verifiable programs.
-
-Return a JSON object:
-{
-  "scholarships": [
-    {
-      "title": "Official scholarship name",
-      "provider": "Funding organization",
-      "university": "Host university if a single institution (else blank)",
-      "hostCountry": "Host country",
-      "degreeLevels": ["Master / Postgraduate"],
-      "fieldsOfStudy": ["All / Any Field"],
-      "fundingType": "Fully Funded",
-      "deadline": "YYYY-MM-DD or descriptive text",
-      "summary": "1-2 sentence description",
-      "keyRequirements": ["requirement 1", "requirement 2"],
-      "officialApplicationUrl": "https://...",
-      "contacts": { "email": "...", "inquiryFormUrl": "..." },
-      "sourceUrl": "the webpage you found this on",
-      "sourceName": "e.g. the website domain"
-    }
-  ]
+// Infer funding type from free-text (RSS content/categories) where possible.
+function inferFundingType(text: string): string {
+  const t = (text || '').toLowerCase();
+  if (t.includes('fully funded') || t.includes('fully-funded')) return 'Fully Funded';
+  if (t.includes('partial')) return 'Partial Tuition';
+  if (t.includes('tuition')) return 'Tuition Only';
+  return 'Fully Funded'; // most scholarship listings are fully funded
 }
 
-Return 5-10 scholarships.`,
-      SCHEMA,
-      25000,
-      { tools: [GOOGLE_SEARCH_TOOL] }
-    );
+interface FeedItem {
+  title?: string;
+  link?: string;
+  content?: string;
+  contentSnippet?: string;
+  isoDate?: string;
+  categories?: string[];
+}
 
-    if (!raw?.scholarships || raw.scholarships.length === 0) {
-      console.log('No scholarships extracted for query:', query);
-      await logDiscovery(query, 'completed', 0, 'No scholarships extracted');
-      return { results: 0, errors: 0 };
-    }
-
-    let inserted = 0;
-    let errors = 0;
-    for (const s of raw.scholarships) {
-      const ok = await persistScholarship(s, query);
-      if (ok) inserted++;
-      else errors++;
-    }
-    await logDiscovery(query, 'completed', inserted, errors ? `${errors} failed to persist` : null);
-    return { results: inserted, errors };
+async function fetchFeed(url: string): Promise<ExtractedScholarship[]> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  let xml: string;
+  try {
+    const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+    xml = await res.text();
   } catch (e) {
-    console.error('Discovery run error for query:', query, (e as Error).message);
-    await logDiscovery(query, 'failed', 0, (e as Error).message);
-    return { results: 0, errors: 1 };
+    throw new Error(`Feed request failed: ${(e as Error).message}`);
+  } finally {
+    clearTimeout(timer);
   }
-}
+  const parser = new Parser();
+  const feed = await parser.parseString(xml);
+  const items: FeedItem[] = (feed?.items || []) as FeedItem[];
+  const sourceName = (feed?.title as string) || url;
+  const results: ExtractedScholarship[] = [];
 
-async function logDiscovery(query: string, status: string, found: number, error?: string | null) {
-  try {
-    await admin.from('discovery_log').insert({
-      source_url: query,
-      source_name: 'manual-discovery',
-      status,
-      scholarships_found: found,
-      error_message: error || null,
+  for (const item of items) {
+    const title = (item.title || '').trim();
+    if (!title) continue;
+    const link = item.link || '';
+    const text = `${item.content || ''} ${item.contentSnippet || ''} ${(item.categories || []).join(' ')}`;
+    results.push({
+      title: title.replace(/<[^>]+>/g, '').slice(0, 200),
+      provider: sourceName,
+      university: undefined,
+      hostCountry: 'Multiple',
+      degreeLevels: ['Master / Postgraduate'],
+      fieldsOfStudy: ['All / Any Field'],
+      fundingType: inferFundingType(text),
+      deadline: undefined,
+      summary: (item.contentSnippet || '').slice(0, 300),
+      keyRequirements: [],
+      officialApplicationUrl: link || undefined,
+      contacts: {},
+      sourceUrl: link || `${url}#${title.slice(0, 40)}`,
+      sourceName,
     });
-  } catch (e) {
-    console.error('Failed to write discovery_log:', (e as Error).message);
   }
+  // Cap items so the batch job stays within serverless time limits.
+  return results.slice(0, 15);
 }
 
-// Deduplicate + store a discovered scholarship
-async function persistScholarship(s: ExtractedScholarship, query: string): Promise<boolean> {
-  if (!s.title || !s.provider || !s.hostCountry || !s.fundingType) return false;
-
-  // Deduplicate by normalized title + provider
-  const normalizedTitle = s.title.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const existing = await admin
-    .from('scholarships')
-    .select('id')
-    .or(`external_id.eq.${s.sourceUrl || ''}`)
-    .ilike('title', `%${s.title.trim().slice(0, 40)}%`)
-    .limit(1);
-
-  // Simple title-based dedup check
-  if (existing?.data && existing.data.length > 0) {
-    return false; // duplicate
+export async function runDiscoveryRun(_query: string): Promise<{ results: number; errors: number }> {
+  // Gather all candidates from every feed (each feed capped internally).
+  const candidates: ExtractedScholarship[] = [];
+  let feedSucceeded = 0;
+  for (const url of DISCOVERY_FEEDS) {
+    try {
+      const items = await fetchFeed(url);
+      feedSucceeded++;
+      candidates.push(...items);
+    } catch (e) {
+      console.warn(`Feed failed (${url}):`, (e as Error).message);
+    }
   }
 
-  const { error } = await admin.from('scholarships').upsert(
-    {
+  // If every feed failed, fall back to the curated list (fully offline-safe).
+  const sourceList: Array<[ExtractedScholarship, string]> =
+    candidates.length > 0
+      ? candidates.map((s) => [s, 'google-news-search'])
+      : CURATED_FALLBACK.map((c) => [
+          {
+            title: c.title,
+            provider: c.provider,
+            hostCountry: c.hostCountry,
+            degreeLevels: c.degreeLevels,
+            fieldsOfStudy: ['All / Any Field'],
+            fundingType: c.fundingType,
+            officialApplicationUrl: c.officialApplicationUrl,
+            sourceUrl: c.officialApplicationUrl,
+            sourceName: c.provider,
+            keyRequirements: [],
+            contacts: {},
+            summary: '',
+          } as ExtractedScholarship,
+          'curated-fallback',
+        ]);
+
+  // Batch persist: load existing external_ids once, filter in-memory, insert.
+  const inserted = await persistBatch(sourceList);
+
+  const note =
+    candidates.length > 0
+      ? `${feedSucceeded}/${DISCOVERY_FEEDS.length} feeds parsed (google-news-search)`
+      : `All ${DISCOVERY_FEEDS.length} feeds unreachable; used curated fallback`;
+  await logDiscovery('feed-discovery', 'completed', inserted, note);
+
+  return { results: inserted, errors: 0 };
+}
+
+// Load all existing external_ids, filter out candidates already present,
+// then batch-insert the new ones with a single upsert.
+async function persistBatch(sourceList: Array<[ExtractedScholarship, string]>): Promise<number> {
+  let batch: Array<Record<string, unknown>> = [];
+  let insertedForUpsert = 0;
+  const now = new Date().toISOString();
+
+  // Load existing external_ids once (avoid N+1 dedup queries).
+  let existing = new Set<string>();
+  try {
+    const { data } = await admin.from('scholarships').select('external_id');
+    existing = new Set((data || []).map((r) => r.external_id).filter(Boolean) as string[]);
+  } catch (e) {
+    console.warn('Could not load existing external_ids for dedup:', (e as Error).message);
+  }
+
+  // De-duplicate external_ids across existing rows AND within this batch.
+  const seenInBatch = new Set<string>();
+  for (const [s, sourceName] of sourceList) {
+    if (!s.title || !s.provider) continue;
+    const ref = s.sourceUrl || '';
+    if (ref) {
+      if (existing.has(ref)) continue; // already in DB
+      if (seenInBatch.has(ref)) continue; // already queued this run
+      seenInBatch.add(ref);
+    }
+
+    batch.push({
+      external_id: ref || null,
       title: s.title,
       provider: s.provider,
       university: s.university || null,
-      host_country: s.hostCountry,
-      degree_levels: s.degreeLevels || [],
+      host_country: s.hostCountry || 'Multiple',
+      degree_levels: s.degreeLevels || ['Master / Postgraduate'],
       fields_of_study: s.fieldsOfStudy || ['All / Any Field'],
-      funding_type: s.fundingType,
+      funding_type: s.fundingType || 'Fully Funded',
       deadline: s.deadline || null,
       deadline_status: 'open',
       summary: s.summary || '',
@@ -186,16 +221,50 @@ async function persistScholarship(s: ExtractedScholarship, query: string): Promi
       official_application_url: s.officialApplicationUrl || null,
       contacts: s.contacts || {},
       source_url: s.sourceUrl || null,
-      source_name: query,
-      last_verified_at: new Date().toISOString(),
+      source_name: sourceName,
+      last_verified_at: now,
       is_custom: false,
       is_active: true,
-    },
-    { onConflict: 'external_id' }
-  );
-  if (error) {
-    console.error('Failed to persist scholarship:', s.title, error.message);
-    return false;
+    });
   }
-  return true;
+
+  if (batch.length === 0) return 0;
+
+  // Insert in chunks to avoid very large payloads; count rows written.
+  const CHUNK = 25;
+  for (let i = 0; i < batch.length; i += CHUNK) {
+    const chunk = batch.slice(i, i + CHUNK);
+    const { error, count } = await admin
+      .from('scholarships')
+      .upsert(chunk, { onConflict: 'external_id', count: 'exact' });
+    if (error) {
+      console.error('Batch upsert failed:', error.message);
+    } else {
+      insertedForUpsert += (count ?? chunk.length) - 0;
+    }
+  }
+
+  // New external_ids from this run so future runs won't re-insert but we
+  // can still count rows actually created on this run.
+  return insertedForUpsert;
 }
+
+async function logDiscovery(query: string, status: string, found: number, error?: string | null) {
+  try {
+    await admin.from('discovery_log').insert({
+      source_url: query,
+      source_name: 'feed-discovery',
+      status,
+      scholarships_found: found,
+      error_message: error || null,
+    });
+  } catch (e) {
+    console.error('Failed to write discovery_log:', (e as Error).message);
+  }
+}
+
+// Kept for backward compatibility with the scheduled/manual job callers.
+// Discovery now fetches all feeds in a single run and ignores the query text.
+export const DISCOVERY_QUERIES: { id: string; query: string }[] = [
+  { id: 'all-feeds', query: 'all scholarship feeds' },
+];

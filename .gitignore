@@ -7,3 +7,6 @@ coverage/
 .vercel/
 .env*
 !.env.example
+
+# Google OAuth client secrets (never commit)
+client_secret_*.apps.googleusercontent.com*.json

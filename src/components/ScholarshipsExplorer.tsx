@@ -60,6 +60,8 @@ export const ScholarshipsExplorer: React.FC<ScholarshipsExplorerProps> = ({
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [recentSearches, setRecentSearches] = useState<string[]>(() => loadRecentSearches());
+  const [visibleCount, setVisibleCount] = useState(12);
+  const PAGE_SIZE = 12;
 
   // Automatically save search query to recent searches after typing pauses
   useEffect(() => {
@@ -112,6 +114,14 @@ export const ScholarshipsExplorer: React.FC<ScholarshipsExplorerProps> = ({
     filters.onlySaved ||
     filters.onlyTracked ||
     (filters.minMatchScore && filters.minMatchScore > 0);
+
+  // Pagination: reset to first page whenever the result set or filters change.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filters, projectedScholarships]);
+
+  const visibleScholarships = projectedScholarships.slice(0, visibleCount);
+  const hasMore = visibleCount < projectedScholarships.length;
 
   return (
     <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-200">
@@ -430,24 +440,37 @@ export const ScholarshipsExplorer: React.FC<ScholarshipsExplorerProps> = ({
           </button>
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-          {projectedScholarships.map(proj => (
-            <ScholarshipCard
-              key={proj.scholarship.id}
-              scholarship={proj.scholarship}
-              matchScore={proj.matchScore}
-              completedChecklistCount={proj.completedChecklistCount}
-              totalChecklistCount={proj.totalChecklistCount}
-              progressPercent={proj.progressPercent}
-              isSaved={proj.isSaved}
-              isTracked={proj.isTracked}
-              onToggleSave={onToggleSave}
-              onTrack={onTrack}
-              onOpenDetails={onOpenDetails}
-              onOpenAiSummary={onOpenAiSummary}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            {visibleScholarships.map(proj => (
+              <ScholarshipCard
+                key={proj.scholarship.id}
+                scholarship={proj.scholarship}
+                matchScore={proj.matchScore}
+                completedChecklistCount={proj.completedChecklistCount}
+                totalChecklistCount={proj.totalChecklistCount}
+                progressPercent={proj.progressPercent}
+                isSaved={proj.isSaved}
+                isTracked={proj.isTracked}
+                onToggleSave={onToggleSave}
+                onTrack={onTrack}
+                onOpenDetails={onOpenDetails}
+                onOpenAiSummary={onOpenAiSummary}
+              />
+            ))}
+          </div>
+
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <button
+                onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                className="px-6 py-2.5 rounded-xl text-xs font-semibold bg-white dark:bg-[#181822] text-stone-800 dark:text-[#D1D1D6] hover:bg-stone-100 dark:hover:bg-[#22222C] border border-stone-200 dark:border-[#282834] transition min-h-[44px]"
+              >
+                Load more ({projectedScholarships.length - visibleCount} remaining)
+              </button>
+            </div>
+          )}
+        </>
       ) : (
         /* Dense Comparison Table View */
         <div className="bg-white dark:bg-[#121217] rounded-2xl border border-stone-200 dark:border-[#24242E] shadow-xs overflow-hidden">
@@ -465,7 +488,7 @@ export const ScholarshipsExplorer: React.FC<ScholarshipsExplorerProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-200 dark:divide-[#1E1E26]">
-                {projectedScholarships.map(proj => {
+                {visibleScholarships.map(proj => {
                   const s = proj.scholarship;
                   const badge = getMatchBadgeColor(proj.matchScore);
                   return (
@@ -545,6 +568,18 @@ export const ScholarshipsExplorer: React.FC<ScholarshipsExplorerProps> = ({
                     </tr>
                   );
                 })}
+                {hasMore && (
+                  <tr>
+                    <td colSpan={7} className="py-4 px-4 text-center">
+                      <button
+                        onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                        className="px-5 py-2 rounded-lg text-xs font-semibold bg-stone-100 dark:bg-[#181822] text-stone-800 dark:text-[#D1D1D6] hover:bg-stone-200 dark:hover:bg-[#22222C] border border-stone-200 dark:border-[#282834] transition min-h-[40px]"
+                      >
+                        Load more ({projectedScholarships.length - visibleCount} remaining)
+                      </button>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

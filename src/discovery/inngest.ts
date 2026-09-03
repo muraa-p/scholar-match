@@ -1,5 +1,5 @@
 import { Inngest } from 'inngest';
-import { runDiscoveryRun, DISCOVERY_QUERIES } from './discovery';
+import { runDiscoveryRun } from './discovery';
 
 // Create a single shared Inngest client
 export const inngest = new Inngest({
@@ -7,7 +7,7 @@ export const inngest = new Inngest({
   // Signing key is loaded from env automatically by the SDK
 });
 
-// The scheduled discovery job: runs all configured queries
+// The scheduled discovery job: fetches all public scholarship feeds
 export const discoveryJob = inngest.createFunction(
   {
     id: 'run-scholarship-discovery',
@@ -16,13 +16,7 @@ export const discoveryJob = inngest.createFunction(
     triggers: [{ cron: '0 2 * * *' }],
   },
   async ({ step }) => {
-    const total = { results: 0, errors: 0 };
-    for (const q of DISCOVERY_QUERIES) {
-      const res = await step.run(`discover:${q.id}`, () => runDiscoveryRun(q.query));
-      total.results += res.results;
-      total.errors += res.errors;
-    }
-    return total;
+    return step.run('discover-feeds', () => runDiscoveryRun(''));
   }
 );
 
@@ -32,17 +26,7 @@ export const manualDiscoveryRun = inngest.createFunction(
     id: 'manual-scholarship-discovery-run',
     triggers: [{ event: 'scholarmatch/discovery.manual' }],
   },
-  async ({ event, step }) => {
-    const query = event.data?.query as string | undefined;
-    if (query) {
-      return step.run('discover-custom', () => runDiscoveryRun(query));
-    }
-    const total = { results: 0, errors: 0 };
-    for (const q of DISCOVERY_QUERIES) {
-      const res = await step.run(`discover:${q.id}`, () => runDiscoveryRun(q.query));
-      total.results += res.results;
-      total.errors += res.errors;
-    }
-    return total;
+  async ({ step }) => {
+    return step.run('discover-feeds', () => runDiscoveryRun(''));
   }
 );

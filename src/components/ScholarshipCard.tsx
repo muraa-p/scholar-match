@@ -108,7 +108,7 @@ export const ScholarshipCard: React.FC<ScholarshipCardProps> = memo(({
 
             <div className="flex items-center space-x-1.5 text-stone-500 dark:text-[#8E8E93] pt-0.5">
               <Globe className="w-3.5 h-3.5 shrink-0 text-stone-400 dark:text-[#8E8E93]" />
-              <span className="font-medium text-stone-600 dark:text-[#A1A1AA] truncate">
+              <span className="font-medium text-stone-700 dark:text-[#A1A1AA] truncate">
                 {scholarship.hostCountry}
               </span>
             </div>
@@ -116,7 +116,7 @@ export const ScholarshipCard: React.FC<ScholarshipCardProps> = memo(({
         </div>
 
         {/* Summary */}
-        <p className="text-xs text-stone-600 dark:text-[#A1A1AA] line-clamp-2 leading-relaxed mb-3.5">
+        <p className="text-xs text-stone-700 dark:text-[#A1A1AA] line-clamp-2 leading-relaxed mb-3.5">
           {scholarship.summary}
         </p>
 
@@ -138,7 +138,7 @@ export const ScholarshipCard: React.FC<ScholarshipCardProps> = memo(({
             </span>
           )}
           {scholarship.deadline && (
-            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-stone-100 dark:bg-[#181822] text-stone-500 dark:text-[#8E8E93] border dark:border-[#24242E] flex items-center">
+            <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-stone-100 dark:bg-[#181822] text-stone-700 dark:text-[#8E8E93] border dark:border-[#24242E] flex items-center">
               <Calendar className="w-2.5 h-2.5 mr-1" />
               {scholarship.deadline}
             </span>
