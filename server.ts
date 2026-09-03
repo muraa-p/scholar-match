@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
+import { createServer as createViteServer } from 'vite';
 import aiRouter from './src/server/aiRoutes';
 import discoveryRouter from './src/server/discoveryRoutes';
 
@@ -36,8 +37,13 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Vite dev middleware is provided by src/lib/viteDev.ts (used by launch.ts in
-// development only) so that the production/serverless entry never imports Vite.
+// Vite dev middleware — used by launch.ts in development for HMR.
+export async function mountVite() {
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: 'spa',
+  });
+  app.use(vite.middlewares);
+}
 
-// Default export for Vercel's @vercel/node builder.
 export default app;
