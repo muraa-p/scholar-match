@@ -1,11 +1,12 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { getGeminiClient, fetchJson, GEMINI_MODEL } from '../server/gemini';
+import { getGeminiClient, fetchJson, GEMINI_MODEL, GOOGLE_SEARCH_TOOL } from '../server/gemini';
 import { admin } from '../lib/supabaseAdmin';
 
 // ---------------------------------------------------------------------
 // Discovery sources: curated topical queries that return many fresh
-// scholarship opportunities. We use Gemini's web grounding instead of
-// brittle HTML scraping so results stay robust on flaky networks.
+// scholarship opportunities. We use Gemini's Google Search grounding
+// (real web access) instead of brittle HTML scraping so results stay
+// robust and current.
 // ---------------------------------------------------------------------
 
 export interface DiscoveryQuery {
@@ -14,11 +15,11 @@ export interface DiscoveryQuery {
 }
 
 export const DISCOVERY_QUERIES: DiscoveryQuery[] = [
-  { id: 'fully-funded-masters', query: 'List current fully funded master scholarships for international students 2026 2027 with application deadlines' },
-  { id: 'phd-scholarships', query: 'List current fully funded PhD scholarships for international students 2026 2027 with deadlines' },
-  { id: 'developing-countries', query: 'List scholarships for students from developing countries 2026 2027 with application links' },
-  { id: 'stem', query: 'List STEM scholarships for international students 2026 2027 with requirements and deadlines' },
-  { id: 'undergraduate', query: 'List undergraduate scholarships for international students 2026 2027 with deadlines' },
+  { id: 'fully-funded-masters', query: 'current fully funded master scholarships for international students 2026 2027 with application deadlines' },
+  { id: 'phd-scholarships', query: 'current fully funded PhD scholarships for international students 2026 2027 with application deadlines' },
+  { id: 'developing-countries', query: 'scholarships for students from developing countries 2026 2027 with application links' },
+  { id: 'stem', query: 'STEM scholarships for international students 2026 2027 with requirements and deadlines' },
+  { id: 'undergraduate', query: 'undergraduate scholarships for international students 2026 2027 with application deadlines' },
 ];
 
 // ---------------------------------------------------------------------
@@ -73,15 +74,16 @@ export async function runDiscoveryRun(query: string): Promise<{ results: number;
   const ai = getGeminiClient();
   if (!ai) {
     console.warn('No Gemini key — skipping discovery run');
+    await logDiscovery(query, 'failed', 0, 'No Gemini key configured');
     return { results: 0, errors: 0 };
   }
 
   try {
     const raw = await fetchJson<{ scholarships: ExtractedScholarship[] }>(
       ai,
-      `You are a scholarship discovery agent with live web access. Search the web for current, REAL scholarship opportunities matching this intent: "${query}".
+      `You are a scholarship discovery agent with live Google Search access. Use the search tool to find current, REAL scholarship opportunities matching this intent: "${query}".
 
-For each scholarship you find, extract accurate, up-to-date information. Only include scholarships that actually exist and are currently open for application (or have an announced 2026/2027 deadline).
+Only include scholarships that actually exist and are currently open for application (or have an announced 2026/2027 deadline). Prefer well-known, verifiable programs.
 
 Return a JSON object:
 {
@@ -89,14 +91,14 @@ Return a JSON object:
     {
       "title": "Official scholarship name",
       "provider": "Funding organization",
-      "university": "Host university if a single institution (else null)",
+      "university": "Host university if a single institution (else blank)",
       "hostCountry": "Host country",
-      "degreeLevels": ["Bachelor / Undergraduate" | "Master / Postgraduate" | "PhD / Doctorate" | ...],
-      "fieldsOfStudy": ["All / Any Field" or specific fields],
-      "fundingType": "Fully Funded" | "Partial Tuition" | "Tuition Only" | "Stipend Only" | "Research Grant",
+      "degreeLevels": ["Master / Postgraduate"],
+      "fieldsOfStudy": ["All / Any Field"],
+      "fundingType": "Fully Funded",
       "deadline": "YYYY-MM-DD or descriptive text",
       "summary": "1-2 sentence description",
-      "keyRequirements": ["requirement 1", "requirement 2", ...],
+      "keyRequirements": ["requirement 1", "requirement 2"],
       "officialApplicationUrl": "https://...",
       "contacts": { "email": "...", "inquiryFormUrl": "..." },
       "sourceUrl": "the webpage you found this on",
@@ -105,13 +107,15 @@ Return a JSON object:
   ]
 }
 
-Try to return 5-10 scholarships. Prefer well-known, verifiable programs.`,
+Return 5-10 scholarships.`,
       SCHEMA,
-      40000
+      25000,
+      { tools: [GOOGLE_SEARCH_TOOL] }
     );
 
     if (!raw?.scholarships || raw.scholarships.length === 0) {
       console.log('No scholarships extracted for query:', query);
+      await logDiscovery(query, 'completed', 0, 'No scholarships extracted');
       return { results: 0, errors: 0 };
     }
 
@@ -122,10 +126,26 @@ Try to return 5-10 scholarships. Prefer well-known, verifiable programs.`,
       if (ok) inserted++;
       else errors++;
     }
+    await logDiscovery(query, 'completed', inserted, errors ? `${errors} failed to persist` : null);
     return { results: inserted, errors };
   } catch (e) {
     console.error('Discovery run error for query:', query, (e as Error).message);
+    await logDiscovery(query, 'failed', 0, (e as Error).message);
     return { results: 0, errors: 1 };
+  }
+}
+
+async function logDiscovery(query: string, status: string, found: number, error?: string | null) {
+  try {
+    await admin.from('discovery_log').insert({
+      source_url: query,
+      source_name: 'manual-discovery',
+      status,
+      scholarships_found: found,
+      error_message: error || null,
+    });
+  } catch (e) {
+    console.error('Failed to write discovery_log:', (e as Error).message);
   }
 }
 

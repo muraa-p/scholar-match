@@ -55,7 +55,8 @@ export async function fetchJson<T>(
   ai: GoogleGenAI,
   prompt: string,
   schema: any,
-  timeoutMs = 25000
+  timeoutMs = 25000,
+  options?: { tools?: any[] }
 ): Promise<T | null> {
   try {
     const response = await withTimeout(
@@ -65,6 +66,7 @@ export async function fetchJson<T>(
         config: {
           responseMimeType: 'application/json',
           responseSchema: schema,
+          ...(options?.tools?.length ? { tools: options.tools } : {}),
         },
       }),
       timeoutMs
@@ -79,3 +81,6 @@ export async function fetchJson<T>(
     return null;
   }
 }
+
+// Google Search grounding tool definition (lets Gemini search the live web).
+export const GOOGLE_SEARCH_TOOL = { googleSearch: {} };
