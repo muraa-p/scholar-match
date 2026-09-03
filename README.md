@@ -80,6 +80,15 @@ Find scholarships across the internet matching your academic profile, with verif
 ### Custom scholarships (user-added)
 - `POST /api/v1/scholarships` — save a custom scholarship (JWT auth required). Validated server-side (lengths, allowed enum values, URL scheme/host) and **rate-limited to a hard max of 20 custom scholarships per user** via a DB count on `created_by` — this protects the shared free-tier database from abuse. Inserts happen with the service-role key (bypasses RLS); the browser anon key cannot write to `scholarships`.
 
+### Public SEO pages (no auth — crawlable)
+The scholarship content is **server-rendered and publicly indexable** (the interactive app itself is behind login, but these pages are not — this is what lets Google see scholarship content):
+- `GET /scholarships` — server-rendered, paginated browse index (`?page=N`, 40 per page)
+- `GET /scholarships/:slug` — server-rendered scholarship detail page (title + content included in the HTML, canonical + Open Graph meta, links into the app). Slug = slugified title + `-` + first 8 hex chars of the row id
+- `GET /sitemap.xml` — dynamically generated sitemap listing every active scholarship URL
+- `GET /robots.txt` — static; disallows OAuth `#access_token` / `#error` fragments
+
+These are rendered by the same serverless function (`api/index.ts`) with a 15-minute in-memory cache and `Cache-Control` headers. Routing lives in `vercel.json` (`/scholarships*` and `/sitemap.xml` → `/api/index`). For the Flutter app, the public browse/detail data is available via the Supabase `scholarships` table (public select) or `POST /api/v1` with JWT.
+
 ### Health
 - `GET /api/health`
 

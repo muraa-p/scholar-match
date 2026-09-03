@@ -481,6 +481,272 @@ discoveryRouter.post('/scholarships', requireAuth, async (req, res) => {
 });
 app.use('/api/v1', discoveryRouter);
 
+// ================================================================
+// Public SEO pages (server-rendered, crawlable without login)
+// ================================================================
+const SITE_URL = process.env.SITE_URL || 'https://scholarmatch-kappa.vercel.app';
+
+function htmlEscape(v: any): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function slugify(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+function scholarshipSlug(row: any): string {
+  const base = slugify(row.title) || 'scholarship';
+  return `${base}-${String(row.id).replace(/-/g, '').slice(0, 8)}`;
+}
+
+function scholarshipMeta(row: any): { title: string; description: string } {
+  const host = row.host_country || 'Multiple countries';
+  const funding = row.funding_type || 'Fully Funded';
+  const degrees = Array.isArray(row.degree_levels) && row.degree_levels.length ? row.degree_levels.join(', ') : 'All levels';
+  const summary = (row.summary || '').trim();
+  const title = `${row.title} — ${funding} Scholarship in ${host} | ScholarMatch`;
+  const description = [
+    summary || `Apply for the ${row.title} scholarship offered by ${row.provider || 'the host institution'} in ${host}.`,
+    `${funding} · ${degrees}`,
+    'Requirements, application deadline, official portal, and insider tips.',
+  ].join(' ');
+  return { title, description: description.slice(0, 160) };
+}
+
+function seoShell(inner: string, headExtras: string): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    ${headExtras}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body{margin:0;font-family:'Plus Jakarta Sans',system-ui,-apple-system,sans-serif;background:#0A0A0B;color:#E4E4E7;line-height:1.6}
+      .wrap{max-width:760px;margin:0 auto;padding:28px 20px 60px}
+      .brand{display:flex;align-items:center;gap:10px;font-family:'Space Grotesk',sans-serif;font-weight:700;color:#F4F4F5;text-decoration:none;font-size:20px}
+      .brand em{font-style:normal;color:#C5A267}
+      .brand img{width:26px;height:26px}
+      a{color:#D4B37F}
+      .card{background:#121217;border:1px solid #24242E;border-radius:16px;padding:24px;margin-top:22px}
+      h1{font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;color:#F4F4F5;margin:18px 0 4px}
+      .sub{color:#8E8E93;font-size:14px}
+      .badges{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+      .badge{background:#C5A26714;border:1px solid #C5A26740;color:#E5C38F;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600}
+      .row{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid #1C1C24;font-size:14px}
+      .row dt{color:#8E8E93}.row dd{margin:0;text-align:right;font-weight:600;color:#E4E4E7}
+      .btn{display:inline-block;background:#C5A267;color:#0A0A0B;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:12px;margin-top:12px;font-size:14px}
+      .btng{background:#1C1C26;color:#F4F4F5;border:1px solid #2E2E3C}
+      h2{font-size:17px;font-family:'Space Grotesk',sans-serif;color:#F4F4F5;margin:22px 0 8px}
+      ul{margin:0;padding-left:20px}.list li{margin:7px 0;font-size:14px}
+      .grid{display:grid;grid-template-columns:1fr;gap:14px}
+      .item{background:#121217;border:1px solid #24242E;border-radius:14px;padding:18px}
+      .item h3{margin:0 0 6px;font-size:17px;font-family:'Space Grotesk',sans-serif}.item h3 a{color:#F4F4F5;text-decoration:none}
+      .item h3 a:hover{color:#C5A267}
+      .item .m{font-size:12px;color:#8E8E93;margin-top:8px}
+      .pager{display:flex;gap:12px;margin-top:24px}
+      .foot{margin-top:40px;font-size:12px;color:#71717A;text-align:center}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="brand" href="${SITE_URL}/"><img src="${SITE_URL}/logo.png" alt=""/>Scholar<em>Match</em></a>
+      ${inner}
+    </div>
+  </body>
+</html>`;
+}
+
+const seoCache = new Map<string, { html: string; at: number }>();
+const SEO_TTL = 1000 * 60 * 15;
+function seoCacheGet(key: string): string | null {
+  const e = seoCache.get(key);
+  return e && Date.now() - e.at < SEO_TTL ? e.html : null;
+}
+function seoCacheSet(key: string, html: string) { seoCache.set(key, { html, at: Date.now() }); }
+
+async function fetchPublicScholarships(page: number, perPage: number): Promise<{ data: any[]; total: number }> {
+  const from = page * perPage;
+  const { data, count } = await admin
+    .from('scholarships')
+    .select('id,title,provider,host_country,funding_type,degree_levels,summary,deadline,official_application_url,is_custom', { count: 'exact' })
+    .eq('is_active', true)
+    .order('last_verified_at', { ascending: false })
+    .range(from, from + perPage - 1);
+  return { data: data || [], total: count ?? 0 };
+}
+
+async function fetchScholarshipBySlug(slug: string): Promise<any | null> {
+  // slug ends with a dash + 8 hex chars from the uuid; match against id prefix
+  const m = slug.match(/-([0-9a-f]{8})$/);
+  if (!m) return null;
+  const prefix = m[1];
+  const { data } = await admin
+    .from('scholarships')
+    .select('*')
+    .eq('is_active', true);
+  const rows = data || [];
+  return rows.find((r: any) => String(r.id).replace(/-/g, '').startsWith(prefix)) || null;
+}
+
+const seoRouter = express.Router();
+
+seoRouter.get('/scholarships', async (req, res) => {
+  try {
+    let page = parseInt(String(req.query.page || '1'), 10);
+    if (!isFinite(page) || page < 1) page = 1;
+    const perPage = 40;
+    const good = `scholarships-list-${page}`;
+    const cached = seoCacheGet(good);
+    if (cached) return res.set('Cache-Control', 'public, s-maxage=900').type('html').send(cached);
+
+    const { data, total } = await fetchPublicScholarships(page - 1, perPage);
+    const pages = Math.max(1, Math.ceil(total / perPage));
+
+    const itemsHtml = data.length
+      ? data.map((s: any) => {
+          const slug = scholarshipSlug(s);
+          const url = `${SITE_URL}/scholarships/${slug}`;
+          return `<article class="item">
+            <h3><a href="${url}">${htmlEscape(s.title)}</a></h3>
+            <div style="font-size:13px;color:#8E8E93">${htmlEscape(s.provider || '')} — ${htmlEscape(s.host_country || 'Multiple')}</div>
+            <div class="m">${htmlEscape(s.funding_type || 'Fully Funded')} · ${htmlEscape(Array.isArray(s.degree_levels) ? s.degree_levels.join(', ') : 'All levels')}${s.deadline ? ` · Deadline ${htmlEscape(s.deadline)}` : ''}</div>
+          </article>`;
+        }).join('')
+      : '<p style="color:#8E8E93">No scholarships published yet — check back soon.</p>';
+
+    let pager = '';
+    if (pages > 1) {
+      const prev = page > 1 ? `<a href="${SITE_URL}/scholarships?page=${page - 1}">← Previous</a>` : '';
+      const next = page < pages ? `<a href="${SITE_URL}/scholarships?page=${page + 1}">Next →</a>` : '';
+      pager = `<div class="pager">${prev}<span style="color:#71717A;font-size:13px">Page ${page} of ${pages} (${total} scholarships)</span>${next}</div>`;
+    }
+
+    const inner = `<h1>Browse Scholarships</h1>
+      <p class="sub">A growing index of international scholarships and grants — verified funding, host countries, and application details.</p>
+      <div class="grid" style="margin-top:16px">${itemsHtml}</div>${pager}
+      <p class="foot"><a href="${SITE_URL}/">Sign in to ScholarMatch</a> to personalize matches, track applications, and get AI guidance.</p>`;
+
+    const html = seoShell(inner, `
+    <title>Browse International Scholarships &amp; Grants | ScholarMatch</title>
+    <meta name="description" content="Browse a growing index of fully funded and partial international scholarships and grants by country, funding type, and degree level." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="${SITE_URL}/scholarships" />`);
+    seoCacheSet(good, html);
+    return res.set('Cache-Control', 'public, s-maxage=900').type('html').send(html);
+  } catch (e) {
+    console.error('SEO list error:', (e as Error).message);
+    return res.status(500).type('html').send(seoShell('<h1>Browse Scholarships</h1><p>Something went wrong.</p>', '<title>Browse Scholarships | ScholarMatch</title>'));
+  }
+});
+
+seoRouter.get('/scholarships/:slug', async (req, res) => {
+  const slug = req.params.slug;
+  if (!slug) return res.redirect(`${SITE_URL}/scholarships`);
+  const key = `scholarship-${slug}`;
+  const cached = seoCacheGet(key);
+  if (cached) return res.set('Cache-Control', 'public, s-maxage=900').type('html').send(cached);
+
+  try {
+    const row = await fetchScholarshipBySlug(slug);
+    if (!row) return res.status(404).type('html').send(seoShell('<h1>Not found</h1><p>This scholarship could not be found. <a href="/scholarships">Browse all scholarships</a>.</p>', '<title>Scholarship not found | ScholarMatch</title>'));
+
+    const url = `${SITE_URL}/scholarships/${slug}`;
+    const meta = scholarshipMeta(row);
+    const funding = row.financial_coverage || {};
+    let coverageRows = '';
+    const coverageLabels: [string, any][] = [
+      ['Tuition covered', funding.tuition], ['Living stipend', funding.livingStipend], ['Airfare', funding.airfare],
+      ['Health insurance', funding.healthInsurance], ['Visa fees', funding.visaFees],
+    ];
+    coverageLabels.forEach(([label, val]) => {
+      coverageRows += `<div class="row"><dt>${label}</dt><dd style="color:${val ? '#34D399' : '#71717A'}">${val ? 'Yes' : '—'}</dd></div>`;
+    });
+    const stipend = funding.stipendAmount ? `<div class="row"><dt>Stipend amount</dt><dd>${htmlEscape(funding.stipendAmount)}</dd></div>` : '';
+
+    const reqList = Array.isArray(row.key_requirements) && row.key_requirements.length
+      ? row.key_requirements.map((r: any) => `<li>${htmlEscape(r)}</li>`).join('')
+      : '<li>Check the official application portal for the full requirements list.</li>';
+    const pitfalls = Array.isArray(row.rejection_pitfalls) && row.rejection_pitfalls.length
+      ? row.rejection_pitfalls.map((r: any) => `<li>${htmlEscape(r)}</li>`).join('')
+      : '';
+    const insiderTips = Array.isArray(row.insider_tips) && row.insider_tips.length
+      ? row.insider_tips.map((r: any) => `<li>${htmlEscape(r)}</li>`).join('')
+      : '';
+
+    const apply = row.official_application_url
+      ? `<a class="btn" href="${htmlEscape(row.official_application_url)}" rel="noopener">Apply on official portal →</a>`
+      : '';
+    const contactEmail = row.contacts && row.contacts.email
+      ? `<div class="row"><dt>Contact</dt><dd><a href="mailto:${htmlEscape(row.contacts.email)}">${htmlEscape(row.contacts.email)}</a></dd></div>`
+      : '';
+
+    const inner = `<h1>${htmlEscape(row.title)}</h1>
+      <div class="sub">${htmlEscape(row.provider || '')} · ${htmlEscape(row.host_country || 'Multiple countries')}</div>
+      <div class="badges">
+        <span class="badge">${htmlEscape(row.funding_type || 'Fully Funded')}</span>
+        ${(row.degree_levels || []).map((d: any) => `<span class="badge">${htmlEscape(d)}</span>`).join('')}
+        ${(row.fields_of_study || []).slice(0, 3).map((f: any) => `<span class="badge">${htmlEscape(f)}</span>`).join('')}
+      </div>
+      ${apply}
+      <div class="card">
+        <div class="row"><dt>Host country</dt><dd>${htmlEscape(row.host_country || 'Multiple')}</dd></div>
+        <div class="row"><dt>Provider</dt><dd>${htmlEscape(row.provider || '—')}</dd></div>
+        ${row.deadline ? `<div class="row"><dt>Application deadline</dt><dd>${htmlEscape(row.deadline)}</dd></div>` : ''}
+        ${stipend}${coverageRows}${contactEmail}
+      </div>
+      ${row.summary ? `<div class="card"><h2>About this scholarship</h2><p style="font-size:14px">${htmlEscape(row.summary)}</p></div>` : ''}
+      <div class="card"><h2>Key requirements</h2><ul class="list">${reqList}</ul></div>
+      ${pitfalls ? `<div class="card"><h2>Common reasons candidates get rejected</h2><ul class="list">${pitfalls}</ul></div>` : ''}
+      ${insiderTips ? `<div class="card"><h2>Insider tips</h2><ul class="list">${insiderTips}</ul></div>` : ''}
+      <p style="margin-top:22px;font-size:14px"><a class="btng" style="text-decoration:none" href="${SITE_URL}/">Open in ScholarMatch — personalize &amp; track this scholarship →</a></p>
+      <p class="foot">Information sourced publicly and reviewed by ScholarMatch. Always confirm details on the official portal.</p>`;
+
+    const html = seoShell(inner, `
+    <title>${htmlEscape(meta.title)}</title>
+    <meta name="description" content="${htmlEscape(meta.description)}" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="${url}" />
+    <meta property="og:title" content="${htmlEscape(meta.title)}" />
+    <meta property="og:description" content="${htmlEscape(meta.description)}" />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="${url}" />
+    <meta property="og:site_name" content="ScholarMatch" />
+    <meta property="og:image" content="${SITE_URL}/og-image.svg" />`);
+    seoCacheSet(key, html);
+    return res.set('Cache-Control', 'public, s-maxage=900').type('html').send(html);
+  } catch (e) {
+    console.error('SEO detail error:', (e as Error).message);
+    return res.status(500).type('html').send(seoShell('<h1>Something went wrong</h1>', '<title>Error | ScholarMatch</title>'));
+  }
+});
+
+seoRouter.get('/sitemap.xml', async (_req, res) => {
+  try {
+    const { data } = await fetchPublicScholarships(0, 10000);
+    const urls = [`${SITE_URL}/`, `${SITE_URL}/scholarships`];
+    const schUrls = (data || []).map((s: any) => `${SITE_URL}/scholarships/${scholarshipSlug(s)}`);
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${[...new Set([...urls, ...schUrls])].map(u => `  <url><loc>${u}</loc></url>`).join('\n')}
+</urlset>`;
+    return res.set('Cache-Control', 'public, s-maxage=3600').type('application/xml').send(xml);
+  } catch (e) {
+    console.error('Sitemap error:', (e as Error).message);
+    return res.status(500).type('application/xml').send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://scholarmatch-kappa.vercel.app/</loc></url></urlset>');
+  }
+});
+
+app.use(seoRouter);
+
 // ---- Static SPA serving (local / single-server deploys) ----
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(process.cwd(), 'dist');

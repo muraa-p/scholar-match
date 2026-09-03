@@ -1,5 +1,8 @@
 User-agent: *
 Allow: /
+Allow: /scholarships/
 
 Disallow: /#access_token
 Disallow: /#error
+
+Sitemap: https://scholarmatch-kappa.vercel.app/sitemap.xml
