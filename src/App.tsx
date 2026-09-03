@@ -83,6 +83,7 @@ export default function App() {
   const [aiSummaryScholarship, setAiSummaryScholarship] = useState<Scholarship | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Fetch scholarships + user data from Supabase when logged in
   useEffect(() => {
@@ -109,6 +110,13 @@ export default function App() {
         setUserProfile(profile || defaultUserProfile);
         setSavedScholarshipIds(savedIds);
         setTrackedApplications(apps);
+
+        // Show onboarding for new users who haven't filled their profile yet
+        // (no DB row, or row with onboarding_completed=false)
+        if (!profile || !profile.onboardingCompleted) {
+          setShowOnboarding(true);
+          setIsProfileModalOpen(true);
+        }
       } catch (e) {
         console.error('Failed to load user data', e);
       } finally {
@@ -216,7 +224,8 @@ export default function App() {
     if (user) {
       await saveProfile(user.id, newProfile);
     }
-    setUserProfile(newProfile);
+    setUserProfile({ ...newProfile, onboardingCompleted: true });
+    setShowOnboarding(false);
     setDataVersion(v => v + 1);
   }, [user]);
 
@@ -388,10 +397,14 @@ export default function App() {
       />
 
       <ProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
+        isOpen={isProfileModalOpen || showOnboarding}
+        onClose={() => {
+          if (showOnboarding) return;
+          setIsProfileModalOpen(false);
+        }}
         profile={userProfile}
         onSave={handleSaveProfile}
+        isOnboarding={showOnboarding}
       />
 
       <AddScholarshipModal

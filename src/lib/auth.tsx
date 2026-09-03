@@ -26,14 +26,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Handle OAuth error callbacks — Supabase redirects with ?error=... in the
+    // URL after a failed OAuth flow.  Clean the URL so the user sees a normal
+    // login page instead of a raw error query-string.
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('error')) {
+      const clean = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, '', clean);
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setLoading(false);
+      // After a successful OAuth redirect the URL contains access/refresh
+      // tokens in the fragment (#access_token=...).  Strip them once the
+      // session is established so they're never visible in the address bar.
+      if (event === 'SIGNED_IN' && window.location.hash) {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     });
 
     return () => {

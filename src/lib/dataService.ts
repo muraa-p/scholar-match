@@ -136,6 +136,7 @@ export async function fetchProfile(userId: string): Promise<UserProfile | null> 
       fundingNeed: data.funding_need || 'full_only',
       targetYear: data.target_year || '2026/2027',
       previousRejectionsDescription: data.previous_rejections_description || undefined,
+      onboardingCompleted: data.onboarding_completed || false,
     };
   } catch {
     return null;
@@ -158,6 +159,8 @@ export async function saveProfile(userId: string, profile: UserProfile): Promise
     funding_need: profile.fundingNeed,
     target_year: profile.targetYear,
     previous_rejections_description: profile.previousRejectionsDescription || null,
+    onboarding_completed: true,
+    updated_at: new Date().toISOString(),
   };
   const { error } = await supabase
     .from('user_profiles')

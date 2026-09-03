@@ -21,8 +21,8 @@ interface ProfileModalProps {
   onClose: () => void;
   profile: UserProfile;
   onSave: (updatedProfile: UserProfile) => void;
+  isOnboarding?: boolean;
 }
-
 const DEGREE_OPTIONS: DegreeLevel[] = [
   'High School / Pre-U',
   'Bachelor / Undergraduate',
@@ -64,12 +64,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onClose,
   profile,
   onSave,
+  isOnboarding = false,
 }) => {
   const [formData, setFormData] = useState<UserProfile>({ ...profile });
   const [customCountry, setCustomCountry] = useState('');
   const [savedSuccess, setSavedSuccess] = useState(false);
 
-  if (!isOpen) return null;
+  // Sync formData with profile prop when modal opens (not on every render)
+  const prevOpenRef = React.useRef(isOpen);
+  React.useEffect(() => {
+    if (isOpen && !prevOpenRef.current) {
+      setFormData({ ...profile });
+      setSavedSuccess(false);
+    }
+    prevOpenRef.current = isOpen;
+  }, [isOpen, profile]);
 
   const toggleTargetCountry = (country: string) => {
     const current = formData.targetCountries || [];
@@ -109,7 +118,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4"
+      style={{ visibility: isOpen ? 'visible' : 'hidden', pointerEvents: isOpen ? 'auto' : 'none' }}
+    >
       <div 
         id="profile-edit-dialog"
         className="bg-white dark:bg-[#121217] rounded-2xl sm:rounded-3xl shadow-2xl border border-stone-200 dark:border-[#24242E] w-full max-w-2xl max-h-[92dvh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
@@ -122,20 +134,24 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold font-heading text-stone-900 dark:text-[#F4F4F5]">
-                Edit Academic Profile
+                {isOnboarding ? 'Welcome! Set Up Your Profile' : 'Edit Academic Profile'}
               </h2>
               <p className="text-[11px] sm:text-xs text-stone-500 dark:text-[#8E8E93]">
-                Your qualifications dynamically rank and match all global scholarships.
+                {isOnboarding
+                  ? 'Tell us about your academic background so we can match you with the best scholarships.'
+                  : 'Your qualifications dynamically rank and match all global scholarships.'}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-stone-400 hover:text-stone-700 dark:hover:text-[#F4F4F5] p-2 rounded-xl hover:bg-stone-100 dark:hover:bg-[#181820] transition min-h-[44px] min-w-[44px] flex items-center justify-center"
-            aria-label="Close Profile Dialog"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {!isOnboarding && (
+            <button
+              onClick={onClose}
+              className="text-stone-400 hover:text-stone-700 dark:hover:text-[#F4F4F5] p-2 rounded-xl hover:bg-stone-100 dark:hover:bg-[#181820] transition min-h-[44px] min-w-[44px] flex items-center justify-center"
+              aria-label="Close Profile Dialog"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Modal Form Content */}
@@ -261,16 +277,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-stone-700 dark:text-[#D1D1D6] mb-1.5">
-                Work / Research Experience (Years)
+                Work / Research Experience
               </label>
-              <input
-                type="number"
-                min="0"
-                max="25"
+              <select
                 value={formData.workExperienceYears}
-                onChange={e => setFormData({ ...formData, workExperienceYears: parseInt(e.target.value) || 0 })}
+                onChange={e => setFormData({ ...formData, workExperienceYears: parseInt(e.target.value) })}
                 className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300 dark:border-[#2E2E3C] bg-stone-50 dark:bg-[#181820] text-stone-900 dark:text-[#F4F4F5] focus:outline-hidden focus:ring-1 focus:ring-[#C5A267] min-h-[44px]"
-              />
+              >
+                <option value={0}>None / Student</option>
+                <option value={1}>Less than 1 year</option>
+                <option value={2}>1–2 years</option>
+                <option value={3}>2–3 years</option>
+                <option value={5}>3–5 years</option>
+                <option value={8}>5–8 years</option>
+                <option value={10}>8+ years</option>
+              </select>
             </div>
 
             <div>
@@ -385,13 +406,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
           {/* Action Buttons - Fixed at bottom of modal */}
           <div className="pt-3 flex items-center justify-end space-x-3 border-t border-stone-200 dark:border-[#22222A]">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-stone-600 dark:text-[#8E8E93] hover:bg-stone-100 dark:hover:bg-[#1A1A22] transition min-h-[44px]"
-            >
-              Cancel
-            </button>
+            {!isOnboarding && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-stone-600 dark:text-[#8E8E93] hover:bg-stone-100 dark:hover:bg-[#1A1A22] transition min-h-[44px]"
+              >
+                Cancel
+              </button>
+            )}
             <button
               type="submit"
               className="flex items-center space-x-1.5 px-6 py-2.5 rounded-xl text-xs font-bold bg-stone-900 dark:bg-[#C5A267] text-stone-50 dark:text-[#0A0A0B] hover:opacity-95 dark:hover:bg-[#D4B37F] transition shadow-xs min-h-[44px]"
@@ -404,7 +427,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  <span>Save Profile & Update Matches</span>
+                  <span>{isOnboarding ? 'Save & Start Exploring' : 'Save Profile & Update Matches'}</span>
                 </>
               )}
             </button>

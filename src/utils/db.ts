@@ -98,6 +98,7 @@ export const defaultUserProfile: UserProfile = {
   ieltsScore: '7.5',
   fundingNeed: 'full_only',
   targetYear: '2026/2027',
+  onboardingCompleted: false,
 };
 
 // Database Initialization

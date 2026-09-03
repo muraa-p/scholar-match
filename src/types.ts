@@ -96,6 +96,7 @@ export interface UserProfile {
   fundingNeed: 'full_only' | 'partial_ok';
   previousRejectionsDescription?: string;
   targetYear: string;
+  onboardingCompleted?: boolean;
 }
 
 export interface TrackedApplication {
