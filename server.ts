@@ -36,17 +36,8 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Vite dev middleware — used by launch.ts in development for HMR. Imported
-// lazily so the production/serverless bundle does not include the heavy Vite
-// dependency (it is never called outside development).
-export async function mountVite() {
-  const { createServer } = await import('vite');
-  const vite = await createServer({
-    server: { middlewareMode: true },
-    appType: 'spa',
-  });
-  app.use(vite.middlewares);
-}
+// Vite dev middleware is provided by src/lib/viteDev.ts (used by launch.ts in
+// development only) so that the production/serverless entry never imports Vite.
 
 // Default export for Vercel's @vercel/node builder.
 export default app;
