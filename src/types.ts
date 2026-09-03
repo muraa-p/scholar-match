@@ -97,6 +97,11 @@ export interface UserProfile {
   previousRejectionsDescription?: string;
   targetYear: string;
   onboardingCompleted?: boolean;
+  notifications?: {
+    newMatches: boolean;
+    deadlineReminders: boolean;
+    email?: string;
+  };
 }
 
 export interface TrackedApplication {

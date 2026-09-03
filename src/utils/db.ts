@@ -100,6 +100,7 @@ export const defaultUserProfile: UserProfile = {
   fundingNeed: 'full_only',
   targetYear: '2026/2027',
   onboardingCompleted: false,
+  notifications: { newMatches: false, deadlineReminders: false },
 };
 
 // Database Initialization

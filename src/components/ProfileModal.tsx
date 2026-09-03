@@ -12,7 +12,8 @@ import {
   X,
   Sparkles,
   CheckCircle2,
-  Sliders
+  Sliders,
+  Bell
 } from 'lucide-react';
 import { UserProfile, DegreeLevel, FieldOfStudy } from '../types';
 
@@ -57,6 +58,33 @@ const COUNTRIES_LIST = [
   'Sweden',
   'Turkey',
   'Worldwide'
+];
+
+const NATIONALITIES = [
+  'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Antigua and Barbuda', 'Argentina', 'Armenia', 'Australia', 'Austria', 'Azerbaijan',
+  'Bahamas', 'Bahrain', 'Bangladesh', 'Barbados', 'Belarus', 'Belgium', 'Belize', 'Benin', 'Bhutan', 'Bolivia', 'Bosnia and Herzegovina', 'Botswana', 'Brazil', 'Brunei', 'Bulgaria', 'Burkina Faso', 'Burundi',
+  'Cabo Verde', 'Cambodia', 'Cameroon', 'Canada', 'Central African Republic', 'Chad', 'Chile', 'China', 'Colombia', 'Comoros', 'Congo', 'Costa Rica', 'Croatia', 'Cuba', 'Cyprus', 'Czechia',
+  'Democratic Republic of the Congo', 'Denmark', 'Djibouti', 'Dominica', 'Dominican Republic',
+  'Ecuador', 'Egypt', 'El Salvador', 'Equatorial Guinea', 'Eritrea', 'Estonia', 'Eswatini', 'Ethiopia',
+  'Fiji', 'Finland', 'France',
+  'Gabon', 'Gambia', 'Georgia', 'Germany', 'Ghana', 'Greece', 'Grenada', 'Guatemala', 'Guinea', 'Guinea-Bissau', 'Guyana',
+  'Haiti', 'Honduras', 'Hungary',
+  'Iceland', 'India', 'Indonesia', 'Iran', 'Iraq', 'Ireland', 'Israel', 'Italy',
+  'Jamaica', 'Japan', 'Jordan',
+  'Kazakhstan', 'Kenya', 'Kiribati', 'Kuwait', 'Kyrgyzstan',
+  'Laos', 'Latvia', 'Lebanon', 'Lesotho', 'Liberia', 'Libya', 'Liechtenstein', 'Lithuania', 'Luxembourg',
+  'Madagascar', 'Malawi', 'Malaysia', 'Maldives', 'Mali', 'Malta', 'Marshall Islands', 'Mauritania', 'Mauritius', 'Mexico', 'Micronesia', 'Moldova', 'Monaco', 'Mongolia', 'Montenegro', 'Morocco', 'Mozambique', 'Myanmar',
+  'Namibia', 'Nauru', 'Nepal', 'Netherlands', 'New Zealand', 'Nicaragua', 'Niger', 'Nigeria', 'North Korea', 'North Macedonia', 'Norway',
+  'Oman',
+  'Pakistan', 'Palau', 'Panama', 'Papua New Guinea', 'Paraguay', 'Peru', 'Philippines', 'Poland', 'Portugal',
+  'Qatar',
+  'Romania', 'Russia', 'Rwanda',
+  'Saint Kitts and Nevis', 'Saint Lucia', 'Saint Vincent and the Grenadines', 'Samoa', 'San Marino', 'Sao Tome and Principe', 'Saudi Arabia', 'Senegal', 'Serbia', 'Seychelles', 'Sierra Leone', 'Singapore', 'Slovakia', 'Slovenia', 'Solomon Islands', 'Somalia', 'South Africa', 'South Korea', 'South Sudan', 'Spain', 'Sri Lanka', 'Sudan', 'Suriname', 'Sweden', 'Switzerland', 'Syria',
+  'Taiwan', 'Tajikistan', 'Tanzania', 'Thailand', 'Timor-Leste', 'Togo', 'Tonga', 'Trinidad and Tobago', 'Tunisia', 'Turkey', 'Turkmenistan', 'Tuvalu',
+  'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States', 'Uruguay', 'Uzbekistan',
+  'Vanuatu', 'Vatican City', 'Venezuela', 'Vietnam',
+  'Yemen',
+  'Zambia', 'Zimbabwe'
 ];
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -185,14 +213,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               <label className="block text-xs font-semibold text-stone-700 dark:text-[#D1D1D6] mb-1.5">
                 Nationality / Country of Citizenship
               </label>
-              <input
-                type="text"
+              <select
                 value={formData.nationality}
                 onChange={e => setFormData({ ...formData, nationality: e.target.value })}
                 className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-stone-300 dark:border-[#2E2E3C] bg-stone-50 dark:bg-[#181820] text-stone-900 dark:text-[#F4F4F5] focus:outline-hidden focus:ring-1 focus:ring-[#C5A267] min-h-[44px]"
-                placeholder="e.g. Kenya, India, Brazil, Pakistan, Philippines"
                 required
-              />
+              >
+                {formData.nationality && !NATIONALITIES.includes(formData.nationality) && (
+                  <option value={formData.nationality}>{formData.nationality}</option>
+                )}
+                <option value="">Select your country...</option>
+                {NATIONALITIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -383,6 +417,37 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Notification Preferences */}
+          <div className="p-3.5 rounded-xl border border-stone-200 dark:border-[#24242E] bg-stone-50/50 dark:bg-[#0E0E12]">
+            <div className="flex items-center space-x-1.5 text-stone-800 dark:text-[#F4F4F5] text-xs font-semibold mb-1">
+              <Bell className="w-4 h-4 text-amber-600 dark:text-[#C5A267]" />
+              <span>Notification Preferences (optional)</span>
+            </div>
+            <p className="text-[11px] text-stone-500 dark:text-[#8E8E93] mb-2.5">
+              Opt in to be alerted when new matching scholarships are found or when an application deadline is approaching. Email alerts are being introduced soon.
+            </p>
+            <div className="space-y-2.5">
+              <label className="flex items-start space-x-2.5 text-xs text-stone-700 dark:text-[#D1D1D6] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.notifications?.newMatches || false}
+                  onChange={e => setFormData({ ...formData, notifications: { ...formData.notifications, newMatches: e.target.checked } })}
+                  className="accent-stone-900 dark:accent-[#C5A267] mt-0.5"
+                />
+                <span>New scholarship matches</span>
+              </label>
+              <label className="flex items-start space-x-2.5 text-xs text-stone-700 dark:text-[#D1D1D6] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.notifications?.deadlineReminders || false}
+                  onChange={e => setFormData({ ...formData, notifications: { ...formData.notifications, deadlineReminders: e.target.checked } })}
+                  className="accent-stone-900 dark:accent-[#C5A267] mt-0.5"
+                />
+                <span>Application deadline reminders</span>
+              </label>
             </div>
           </div>
 

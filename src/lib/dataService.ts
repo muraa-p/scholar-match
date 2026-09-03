@@ -137,6 +137,9 @@ export async function fetchProfile(userId: string): Promise<UserProfile | null> 
       targetYear: data.target_year || '2026/2027',
       previousRejectionsDescription: data.previous_rejections_description || undefined,
       onboardingCompleted: data.onboarding_completed || false,
+      notifications: data.notifications
+        ? { newMatches: !!data.notifications.newMatches, deadlineReminders: !!data.notifications.deadlineReminders, email: data.notifications.email || undefined }
+        : { newMatches: false, deadlineReminders: false },
     };
   } catch {
     return null;
@@ -160,6 +163,7 @@ export async function saveProfile(userId: string, profile: UserProfile): Promise
     target_year: profile.targetYear,
     previous_rejections_description: profile.previousRejectionsDescription || null,
     onboarding_completed: true,
+    notifications: profile.notifications || { newMatches: false, deadlineReminders: false },
     updated_at: new Date().toISOString(),
   };
   const { error } = await supabase
