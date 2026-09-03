@@ -2,6 +2,11 @@
   "version": 2,
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/robots.txt", "destination": "/robots.txt" },
+    { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
+    { "source": "/favicon.svg", "destination": "/favicon.svg" },
+    { "source": "/og-image.svg", "destination": "/og-image.svg" },
+    { "source": "/assets/(.*)", "destination": "/assets/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
