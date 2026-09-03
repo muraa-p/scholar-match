@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "tsx launch.ts",
     "seed": "tsx scripts/seed.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs && esbuild launch.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/launch.cjs",
+    "start": "node dist/launch.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

@@ -8,7 +8,6 @@ import discoveryRouter from './src/server/discoveryRoutes';
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
 
 app.use(express.json({ limit: '2mb' }));
 
@@ -23,25 +22,24 @@ app.use('/api/ai', aiRouter);
 // Discovery routes (Inngest serve + manual trigger)
 app.use('/api/v1', discoveryRouter);
 
-// Vite middleware & Static serving
-async function start() {
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`ScholarMatch Server running on http://0.0.0.0:${PORT}`);
+// Mount the production static build (SPA). Used both locally (npm start) and
+// on Vercel, where the app is imported as a module rather than executed.
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
-start();
+// Vite dev middleware — used by launch.ts in development for HMR.
+export async function mountVite() {
+  const vite = await createViteServer({
+    server: { middlewareMode: true },
+    appType: 'spa',
+  });
+  app.use(vite.middlewares);
+}
+
+// Default export for Vercel's @vercel/node builder.
+export default app;
