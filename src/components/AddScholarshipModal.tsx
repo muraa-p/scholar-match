@@ -7,14 +7,17 @@ import {
   Calendar, 
   Mail, 
   ExternalLink,
-  BookOpen
+  BookOpen,
+  AlertCircle,
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 import { Scholarship, DegreeLevel, FieldOfStudy, FundingType } from '../types';
 
 interface AddScholarshipModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddScholarship: (scholarship: Scholarship) => void;
+  onAddScholarship: (scholarship: Scholarship) => Promise<{ id?: string; error?: string }>;
 }
 
 const DEGREE_OPTIONS: DegreeLevel[] = [
@@ -54,6 +57,9 @@ export const AddScholarshipModal: React.FC<AddScholarshipModalProps> = ({
   const [email, setEmail] = useState('');
   const [rejectionPitfall, setRejectionPitfall] = useState('');
   const [minGpa, setMinGpa] = useState<number>(3.2);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   if (!isOpen) return null;
 
@@ -67,9 +73,12 @@ export const AddScholarshipModal: React.FC<AddScholarshipModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !provider.trim() || !hostCountry.trim()) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
 
     const newScholarship: Scholarship = {
       id: `custom-${Date.now()}`,
@@ -121,8 +130,16 @@ export const AddScholarshipModal: React.FC<AddScholarshipModalProps> = ({
       isCustom: true,
     };
 
-    onAddScholarship(newScholarship);
-    onClose();
+    const result = await onAddScholarship(newScholarship);
+    setSaving(false);
+    if (result?.error) {
+      setSaveError(result.error);
+      return;
+    }
+    setSaved(true);
+    setTimeout(() => {
+      onClose();
+    }, 900);
   };
 
   return (
@@ -302,18 +319,33 @@ export const AddScholarshipModal: React.FC<AddScholarshipModalProps> = ({
           </div>
 
           <div className="pt-2 flex justify-end space-x-3 border-t border-stone-200 dark:border-[#22222A]">
+            {saveError && (
+              <div className="mr-auto flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-300">
+                <AlertCircle className="w-4 h-4" />
+                {saveError}
+              </div>
+            )}
+            {saved && (
+              <div className="mr-auto flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-300">
+                <CheckCircle2 className="w-4 h-4" />
+                Saved to your account.
+              </div>
+            )}
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-medium text-stone-600 dark:text-[#8E8E93] hover:bg-stone-100 dark:hover:bg-[#1A1A22]"
+              disabled={saving}
+              className="px-4 py-2 rounded-xl text-xs font-medium text-stone-600 dark:text-[#8E8E93] hover:bg-stone-100 dark:hover:bg-[#1A1A22] disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl text-xs font-semibold bg-stone-900 dark:bg-[#C5A267] text-stone-50 dark:text-[#0A0A0B] hover:opacity-90 dark:hover:bg-[#D4B37F] transition shadow-xs"
+              disabled={saving || saved}
+              className="px-5 py-2 rounded-xl text-xs font-semibold bg-stone-900 dark:bg-[#C5A267] text-stone-50 dark:text-[#0A0A0B] hover:opacity-90 dark:hover:bg-[#D4B37F] transition shadow-xs disabled:opacity-50 flex items-center gap-1.5"
             >
-              Add Scholarship
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {saved ? 'Saved!' : saving ? 'Saving...' : 'Add Scholarship'}
             </button>
           </div>
         </form>

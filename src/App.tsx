@@ -35,6 +35,7 @@ import {
   deleteChecklistItem as apiDeleteChecklistItem,
   addCommunicationLog,
   toggleCommsReplied,
+  addCustomScholarship,
 } from './lib/dataService';
 
 // Components
@@ -230,13 +231,18 @@ export default function App() {
   }, [user]);
 
   // Handler: Add Custom Scholarship
-  const handleAddCustomScholarship = useCallback((newScholarship: Scholarship) => {
-    setExternalScholarships(undefined);
-    fetchScholarships(true).then(list => {
-      const withCustom = [...list, newScholarship];
-      setExternalScholarships(withCustom);
-    });
-    setDataVersion(v => v + 1);
+  // Handler: Add Custom Scholarship (persists to Supabase via protected API)
+  const handleAddCustomScholarship = useCallback(async (newScholarship: Scholarship): Promise<{ id?: string; error?: string }> => {
+    const result = await addCustomScholarship(newScholarship);
+    if (result.error) return result;
+    if (result.id) {
+      setExternalScholarships(undefined);
+      fetchScholarships(true).then(list => {
+        setExternalScholarships([...list, { ...newScholarship, id: result.id! }]);
+      });
+      setDataVersion(v => v + 1);
+    }
+    return result;
   }, []);
 
   // Filter Updates

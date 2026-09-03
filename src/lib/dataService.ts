@@ -455,6 +455,44 @@ export async function fetchChecklist(applicationId: string): Promise<ChecklistIt
 }
 
 // ---------------------------------------------------------------------
+// Custom scholarships (user-submitted via protected API)
+// ---------------------------------------------------------------------
+
+export async function addCustomScholarship(
+  s: Pick<Scholarship, 'title' | 'provider' | 'hostCountry' | 'degreeLevels' | 'fieldsOfStudy' | 'fundingType' | 'financialCoverage' | 'deadline' | 'summary' | 'officialApplicationUrl' | 'contacts'>
+): Promise<{ id?: string; error?: string }> {
+  try {
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess?.session?.access_token;
+    if (!token) return { error: 'You must be signed in' };
+
+    const res = await fetch('/api/v1/scholarships', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        title: s.title,
+        provider: s.provider,
+        hostCountry: s.hostCountry,
+        degreeLevels: s.degreeLevels,
+        fieldsOfStudy: s.fieldsOfStudy,
+        fundingType: s.fundingType,
+        financialCoverage: s.financialCoverage,
+        deadline: s.deadline,
+        summary: s.summary,
+        officialApplicationUrl: s.officialApplicationUrl,
+        email: s.contacts?.email,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: data.error || (res.status === 429 ? 'Daily custom-scholarship limit reached.' : 'Could not save scholarship') };
+    return { id: data.id };
+  } catch {
+    return { error: 'Network error while saving scholarship' };
+  }
+}
+
+// ---------------------------------------------------------------------
 // Communication log
 // ---------------------------------------------------------------------
 

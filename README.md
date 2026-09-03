@@ -40,7 +40,7 @@ Find scholarships across the internet matching your academic profile, with verif
    - `DISCOVERY_RUN_TOKEN` (protects the manual discovery endpoint)
    - `APP_URL`
 
-3. **Apply the database schema** — run `supabase/migrations/0001_initial_schema.sql` then `0002_notifications.sql` in the Supabase SQL Editor.
+3. **Apply the database schema** — run `supabase/migrations/0001_initial_schema.sql`, then `0002_notifications.sql`, then `0003_custom_scholarships.sql` in the Supabase SQL Editor.
 
 4. **Seed the initial scholarships**:
    ```
@@ -76,6 +76,9 @@ Find scholarships across the internet matching your academic profile, with verif
 ### Discovery
 - `POST /api/v1/discovery/run` — trigger a discovery run manually (requires `x-discovery-token` header when `DISCOVERY_RUN_TOKEN` is set)
 - `/api/v1/inngest` — Inngest handler for scheduled discovery (daily cron)
+
+### Custom scholarships (user-added)
+- `POST /api/v1/scholarships` — save a custom scholarship (JWT auth required). Validated server-side (lengths, allowed enum values, URL scheme/host) and **rate-limited to a hard max of 20 custom scholarships per user** via a DB count on `created_by` — this protects the shared free-tier database from abuse. Inserts happen with the service-role key (bypasses RLS); the browser anon key cannot write to `scholarships`.
 
 ### Health
 - `GET /api/health`

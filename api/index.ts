@@ -375,6 +375,110 @@ discoveryRouter.post('/discovery/run', async (req, res) => {
   try { const result = await runDiscoveryRun(''); return res.json({ ok: true, results: result }); }
   catch (e) { return res.status(500).json({ ok: false, error: (e as Error).message }); }
 });
+
+// ---- Custom scholarships (user-submitted) ----
+const MAX_CUSTOM_PER_USER = 20;
+const ALLOWED_FUNDING = ['Fully Funded', 'Partial Tuition', 'Tuition Only', 'Stipend Only', 'Research Grant'];
+const DEGREE_LEVELS = ['High School / Pre-U', 'Bachelor / Undergraduate', 'Master / Postgraduate', 'PhD / Doctorate', 'Postdoc / Fellowship', 'Short Course / Summer School'];
+const FIELDS_OF_STUDY = ['All / Any Field', 'STEM & Computer Science', 'Business, Finance & Economics', 'Medicine & Healthcare', 'Social Sciences, Public Policy & Law', 'Arts & Humanities', 'Environment & Agriculture'];
+
+function cleanStr(v: any, maxLen: number): string {
+  if (typeof v !== 'string') return '';
+  const s = v.trim().replace(/[\u0000-\u001F]/g, ' ').replace(/\s+/g, ' ');
+  return s.slice(0, maxLen);
+}
+
+function isValidUrl(v: any): string | undefined {
+  if (typeof v !== 'string' || !v.trim()) return undefined;
+  try {
+    const u = new URL(v.trim());
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return undefined;
+    if (!u.hostname.includes('.')) return undefined;
+    return u.toString().slice(0, 500);
+  } catch { return undefined; }
+}
+
+// Rate-limit map: userId -> count.  In-memory is fine for a single
+// serverless instance; the authoritative hard cap is the DB quota below.
+const customAddCount: Record<string, number> = {};
+
+discoveryRouter.post('/scholarships', requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).user?.id as string | undefined;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const body = req.body || {};
+    const title = cleanStr(body.title, 200);
+    const provider = cleanStr(body.provider, 200);
+    const hostCountry = cleanStr(body.hostCountry, 100);
+    const officialUrl = isValidUrl(body.officialApplicationUrl);
+    const email = cleanStr(body.email, 254);
+    const deadline = cleanStr(body.deadline, 20);
+    const summary = cleanStr(body.summary, 2000);
+    const fundingType = ALLOWED_FUNDING.includes(body.fundingType) ? body.fundingType : 'Fully Funded';
+    const degreeLevels = Array.isArray(body.degreeLevels)
+      ? body.degreeLevels.filter((d: any) => DEGREE_LEVELS.includes(d)).slice(0, 4)
+      : ['Master / Postgraduate'];
+    const fieldsOfStudy = Array.isArray(body.fieldsOfStudy)
+      ? body.fieldsOfStudy.filter((f: any) => FIELDS_OF_STUDY.includes(f)).slice(0, 3)
+      : ['All / Any Field'];
+
+    // Basic validation
+    if (!title || title.length < 3) return res.status(400).json({ error: 'Title must be at least 3 characters' });
+    if (!provider || provider.length < 2) return res.status(400).json({ error: 'Provider is required' });
+    if (!hostCountry || hostCountry.length < 2) return res.status(400).json({ error: 'Host country is required' });
+
+    // Hard quota check against the DB (authoritative, survives restarts)
+    const { count, error: countErr } = await admin
+      .from('scholarships')
+      .select('id', { count: 'exact', head: true })
+      .eq('created_by', userId)
+      .eq('is_custom', true);
+    if (countErr) console.error('Quota count error:', countErr.message);
+    const current = count ?? 0;
+    if (current >= MAX_CUSTOM_PER_USER) {
+      return res.status(429).json({ error: `You can add up to ${MAX_CUSTOM_PER_USER} custom scholarships. This limit protects the shared database.` });
+    }
+
+    // Insert via service role (bypasses RLS, validates RLS-protected table)
+    const now = new Date().toISOString();
+    const { data, error } = await admin.from('scholarships').insert({
+      title,
+      provider,
+      university: body.university ? cleanStr(body.university, 200) : null,
+      host_country: hostCountry,
+      degree_levels: degreeLevels,
+      fields_of_study: fieldsOfStudy,
+      funding_type: fundingType,
+      financial_coverage: body.financialCoverage || {},
+      deadline: deadline || null,
+      deadline_status: 'open',
+      summary: summary || 'Custom added scholarship program.',
+      key_requirements: [],
+      eligibility_criteria: body.eligibilityCriteria || {},
+      rejection_pitfalls: [],
+      insider_tips: [],
+      official_application_url: officialUrl || null,
+      contacts: email ? { email } : {},
+      default_checklist: [],
+      source_name: 'user-added',
+      source_url: officialUrl || null,
+      last_verified_at: now,
+      is_custom: true,
+      is_active: true,
+      created_by: userId,
+    }).select('id').single();
+    if (error) {
+      console.error('Custom scholarship insert error:', error.message);
+      return res.status(500).json({ error: 'Could not save scholarship' });
+    }
+    customAddCount[userId] = (customAddCount[userId] || 0) + 1;
+    return res.status(201).json({ ok: true, id: data?.id });
+  } catch (e) {
+    console.error('Custom scholarship endpoint error:', (e as Error).message);
+    return res.status(500).json({ error: 'Internal error' });
+  }
+});
 app.use('/api/v1', discoveryRouter);
 
 // ---- Static SPA serving (local / single-server deploys) ----
