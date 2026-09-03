@@ -40,7 +40,7 @@ Find scholarships across the internet matching your academic profile, with verif
    - `DISCOVERY_RUN_TOKEN` (protects the manual discovery endpoint)
    - `APP_URL`
 
-3. **Apply the database schema** — run `supabase/migrations/0001_initial_schema.sql` in the Supabase SQL Editor.
+3. **Apply the database schema** — run `supabase/migrations/0001_initial_schema.sql` then `0002_notifications.sql` in the Supabase SQL Editor.
 
 4. **Seed the initial scholarships**:
    ```
@@ -71,7 +71,7 @@ Find scholarships across the internet matching your academic profile, with verif
 - `POST /api/ai/draft-sop` — motivation letter / statement writer
 - `POST /api/ai/review-essay` — essay scoring + revision suggestions
 
-All AI endpoints return deterministic fallbacks if Gemini is unreachable/rate-limited, so the app never breaks on flaky networks.
+**All AI endpoints require a valid Supabase session** — send the access token as `Authorization: Bearer <token>` (Supabase `getSession()` → `access_token`). They return deterministic fallbacks if Gemini is unreachable/rate-limited, so the app never breaks on flaky networks.
 
 ### Discovery
 - `POST /api/v1/discovery/run` — trigger a discovery run manually (requires `x-discovery-token` header when `DISCOVERY_RUN_TOKEN` is set)
@@ -97,11 +97,11 @@ Row Level Security is enabled: users can only read/write their own data; scholar
 
 ## Scholarship Discovery
 
-The discovery engine uses Gemini with live web access to find and extract current scholarship opportunities. It runs:
+The discovery engine is **keyless and quota-free**: it fetches Google News RSS search feeds (5 query angles) plus an always-merged curated catalog of real international scholarships (MEXT, Vanier, Gates Cambridge, Clarendon, etc.). It runs:
 - **Automatically** — daily via Inngest cron (`0 2 * * *`)
-- **Manually** — `POST /api/v1/discovery/run` with `{ "query": "..." }`
+- **Manually** — `POST /api/v1/discovery/run` with `x-discovery-token` header
 
-Extracted scholarships are deduplicated and written to the `scholarships` table. Deadlines are computed at load time; scholarships past their deadline are hidden automatically.
+Discovered scholarships are deduplicated by source URL and written to the `scholarships` table. Deadlines are computed at load time; scholarships past their deadline are hidden automatically.
 
 ## Features
 
