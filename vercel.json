@@ -1,14 +1,7 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "dist/server.cjs",
-      "use": "@vercel/node",
-      "config": { "includeFiles": ["dist/**"], "maxDuration": 60 }
-    }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "dist/server.cjs" },
-    { "src": "/(.*)", "dest": "dist/server.cjs" }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

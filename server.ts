@@ -22,13 +22,18 @@ app.use('/api/ai', aiRouter);
 // Discovery routes (Inngest serve + manual trigger)
 app.use('/api/v1', discoveryRouter);
 
-// Mount the production static build (SPA). Used both locally (npm start) and
-// on Vercel, where the app is imported as a module rather than executed.
+// Mount the production static build (SPA). Used locally (npm start) and on
+// Vercel, where the SPA is served as static output and only /api/* reaches
+// this function. Guarded so the lambda never crashes if dist/ isn't present
+// (e.g. unmatched /api path when only routing API traffic to the function).
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(process.cwd(), 'dist');
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
+  app.use('/assets', express.static(path.join(distPath, 'assets')));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(distPath, 'index.html'), (err) => {
+      if (err) next();
+    });
   });
 }
 
