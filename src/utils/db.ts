@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { initialScholarships } from '../data/scholarshipsData';
 import { calculateMatchScore } from './matchingEngine';
+import { parseDeadline } from './deadline';
 
 // Storage Keys
 const PROFILE_KEY = 'scholarmatch_user_profile_v2';
@@ -484,7 +485,11 @@ export function queryScholarships(
       return b.matchScore - a.matchScore;
     }
     if (sortBy === 'deadline') {
-      return (a.scholarship.deadline || '').localeCompare(b.scholarship.deadline || '');
+      // Sort by actual deadline date, soonest first. Scholarships without a
+      // machine-readable deadline sink to the bottom instead of the top.
+      const da = parseDeadline(a.scholarship.deadline)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const dbv = parseDeadline(b.scholarship.deadline)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      return da - dbv;
     }
     return a.scholarship.title.localeCompare(b.scholarship.title);
   });
