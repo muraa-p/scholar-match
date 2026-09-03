@@ -4,7 +4,7 @@
     {
       "src": "dist/server.cjs",
       "use": "@vercel/node",
-      "config": { "includeFiles": ["dist/**"] }
+      "config": { "includeFiles": ["dist/**"], "maxDuration": 60 }
     }
   ],
   "routes": [
