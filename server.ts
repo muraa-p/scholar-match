@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
 import aiRouter from './src/server/aiRoutes';
 import discoveryRouter from './src/server/discoveryRoutes';
 
@@ -37,9 +36,12 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Vite dev middleware — used by launch.ts in development for HMR.
+// Vite dev middleware — used by launch.ts in development for HMR. Imported
+// lazily so the production/serverless bundle does not include the heavy Vite
+// dependency (it is never called outside development).
 export async function mountVite() {
-  const vite = await createViteServer({
+  const { createServer } = await import('vite');
+  const vite = await createServer({
     server: { middlewareMode: true },
     appType: 'spa',
   });
