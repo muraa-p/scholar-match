@@ -22,6 +22,30 @@ const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
+// Client-side (anon key) client used to verify a user's Bearer JWT.  The
+// service-role key must NOT be used to validate end-user tokens, so we
+// build a separate client rooted at the anon key.
+const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+const anonClient = anonKey
+  ? createClient(supabaseUrl, anonKey, { auth: { autoRefreshToken: false, persistSession: false } })
+  : null;
+
+// Middleware: require a valid Supabase access token (Authorization: Bearer <jwt>)
+async function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
+  if (!token) return res.status(401).json({ error: 'Missing access token' });
+  if (!anonClient) return res.status(500).json({ error: 'Auth not configured' });
+  try {
+    const { data, error } = await anonClient.auth.getUser(token);
+    if (error || !data.user) return res.status(401).json({ error: 'Invalid or expired token' });
+    (req as any).user = data.user;
+    return next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
 // ================================================================
 // Gemini client
 // ================================================================
@@ -212,6 +236,7 @@ app.get('/api/health', (_req, res) => { res.json({ status: 'ok', hasGeminiKey: !
 
 // ---- AI routes ----
 const aiRouter = express.Router();
+aiRouter.use(requireAuth);
 
 aiRouter.post('/summarize', async (req, res) => {
   const { scholarshipId, title, provider, hostCountry, fundingType, summary, keyRequirements, eligibilityCriteria } = req.body;

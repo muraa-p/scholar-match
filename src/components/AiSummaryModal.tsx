@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Scholarship } from '../types';
 import { getCachedAiSummary, saveCachedAiSummary } from '../utils/db';
+import { apiFetch } from '../lib/api';
 
 interface AiSummaryModalProps {
   scholarship: Scholarship | null;
@@ -64,9 +65,8 @@ export const AiSummaryModal: React.FC<AiSummaryModalProps> = ({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch('/api/ai/summarize', {
+        const res = await apiFetch('/api/ai/summarize', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             scholarshipId: scholarship.id,
             title: scholarship.title,

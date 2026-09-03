@@ -18,6 +18,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Scholarship, UserProfile, TrackedApplication } from '../types';
+import { apiFetch } from '../lib/api';
 
 interface AiAssistantViewProps {
   scholarships: Scholarship[];
@@ -62,9 +63,8 @@ export const AiAssistantView: React.FC<AiAssistantViewProps> = ({
   const handleRunDiagnostic = async () => {
     setLoadingDiagnostic(true);
     try {
-      const response = await fetch('/api/ai/diagnose-fit', {
+      const response = await apiFetch('/api/ai/diagnose-fit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           profile: userProfile,
           scholarship: currentScholarship,
@@ -84,9 +84,8 @@ export const AiAssistantView: React.FC<AiAssistantViewProps> = ({
     setLoadingSop(true);
     setSavedToApp(false);
     try {
-      const response = await fetch('/api/ai/draft-sop', {
+      const response = await apiFetch('/api/ai/draft-sop', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           profile: userProfile,
           scholarship: currentScholarship,
@@ -108,9 +107,8 @@ export const AiAssistantView: React.FC<AiAssistantViewProps> = ({
     if (!essayInput.trim() || essayInput.trim().length < 50) return;
     setLoadingReview(true);
     try {
-      const response = await fetch('/api/ai/review-essay', {
+      const response = await apiFetch('/api/ai/review-essay', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           essayText: essayInput,
           scholarshipTitle: currentScholarship.title,
