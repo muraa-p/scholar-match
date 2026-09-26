@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../lib/auth';
+import { isSupabaseConfigured } from '../lib/supabase';
+import { startDemoSession } from '../lib/demoSupabase';
 import { Award, Mail, Lock, Loader2, Sparkles, Github } from 'lucide-react';
+
+const isDemoMode = !isSupabaseConfigured;
 
 export const AuthPage: React.FC<{ onDone: () => void }> = ({ onDone }) => {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -35,6 +39,23 @@ export const AuthPage: React.FC<{ onDone: () => void }> = ({ onDone }) => {
       setLoading(false);
     }
   };
+
+  const handleDemo = () => {
+    setError(null);
+    setLoading(true);
+    startDemoSession();
+    // The auth listener picks this up, but calling onDone keeps it instant.
+    onDone();
+  };
+
+  // /?demo=1 jumps straight into the demo — handy for sharing a link.
+  useEffect(() => {
+    if (!isDemoMode) return;
+    if (new URLSearchParams(window.location.search).get('demo') !== '1') return;
+    startDemoSession();
+    onDone();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen bg-stone-100 dark:bg-[#0A0A0B] flex items-center justify-center px-4">
@@ -163,6 +184,24 @@ export const AuthPage: React.FC<{ onDone: () => void }> = ({ onDone }) => {
             <span className="text-[11px] text-stone-400 dark:text-[#71717A] uppercase tracking-wider">or</span>
             <div className="flex-1 h-px bg-stone-200 dark:bg-[#24242E]" />
           </div>
+
+          {isDemoMode && (
+            <button
+              type="button"
+              onClick={handleDemo}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#C5A267] text-[#0A0A0B] hover:opacity-90 transition disabled:opacity-50"
+            >
+              <Sparkles className="w-4 h-4" />
+              Explore the demo — no account needed
+            </button>
+          )}
+
+          <p className="text-[11px] text-stone-400 dark:text-[#71717A] mt-3 text-center leading-relaxed">
+            {isDemoMode
+              ? 'This deployment runs offline with sample data. No database, no sign-up.'
+              : 'Or continue with your account.'}
+          </p>
 
           <button
             onClick={signInWithGoogle}

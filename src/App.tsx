@@ -18,6 +18,9 @@ import {
   defaultUserProfile,
 } from './utils/db';
 import { useAuth } from './lib/auth';
+import { isSupabaseConfigured } from './lib/supabase';
+
+const isDemoMode = !isSupabaseConfigured;
 import {
   fetchScholarships,
   fetchProfile,
@@ -113,8 +116,10 @@ export default function App() {
         setTrackedApplications(apps);
 
         // Show onboarding for new users who haven't filled their profile yet
-        // (no DB row, or row with onboarding_completed=false)
-        if (!profile || !profile.onboardingCompleted) {
+        // (no DB row, or row with onboarding_completed=false).
+        // Demo mode always ships a complete seeded profile, so land people on
+        // the content instead of a form.
+        if (!isDemoMode && (!profile || !profile.onboardingCompleted)) {
           setShowOnboarding(true);
           setIsProfileModalOpen(true);
         }
