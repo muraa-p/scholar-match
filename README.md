@@ -144,3 +144,48 @@ The data layer is API-first so a Flutter app can reuse it directly:
 - The **anon key must never be treated as secret** (it's public by design). It's used client-side.
 - The **service role key** bypasses RLS — only ever use it server-side (seed, discovery, cron). Never expose it to the browser.
 - The manual discovery endpoint is protected by `DISCOVERY_RUN_TOKEN` in production.
+---
+
+## Running without a database (demo mode)
+
+If no Supabase credentials are configured, the app runs **fully offline** instead of
+crashing. src/lib/demoSupabase.ts implements the slice of the supabase-js API
+this project uses - the query builder (select / insert / upsert / update / delete,
+with eq / in / order / limit / single) plus the auth methods - on top of
+localStorage, seeded with a demo applicant, saved awards, tracked applications
+and checklists.
+
+| | |
+|---|---|
+| Live demo | <https://scholarmatch-kappa.vercel.app/?demo=1> |
+| Email | `demo@scholarmatch.app` |
+| Password | `demo1234` |
+
+Press **Explore the demo** on the sign-in page, or open `/?demo=1` to skip
+straight in.
+
+Because the offline client has the same interface as the real one, **no component
+or data-service code changes** between the two modes.
+
+### Connecting your own Supabase
+
+This is a fallback, not a replacement. The Postgres schema, Edge Functions and
+SEO routes are all untouched:
+
+1. Copy `.env.example` to `.env` and set your values:
+
+   `
+   VITE_SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+   VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+   `
+
+2. Set `VITE_DEMO_MODE=false` (or leave it unset).
+3. Apply the SQL schema from `supabase/` and deploy the Edge Function.
+4. Deploy. `isSupabaseConfigured` becomes true and the real database is used.
+
+`VITE_DEMO_MODE=true` forces the offline experience even when credentials exist,
+which is what the public demo deployment uses while its Supabase project is
+paused.
+
+Sign-up, Google OAuth and custom-award submission still need a real backend, so
+the UI says so plainly instead of pretending to work.
